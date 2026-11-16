@@ -1,9 +1,21 @@
-"""Vercel entrypoint: re-export the FastAPI app from app.py.
+import json
 
-Vercel's Python runtime serves this file as a serverless function and
-detects the ASGI `app` object. All routes (/health, /api/info,
-/api/download) are handled by the FastAPI app itself; vercel.json rewrites
-every path here.
-"""
+from app import app as fastapi_app
 
-from app import app  # noqa: F401  (Vercel picks up `app` from this module)
+
+async def app(scope, receive, send):
+    if scope["type"] == "http":
+        headers = {k.decode(): v.decode() for k, v in scope.get("headers", [])}
+        data = {
+            "path": scope.get("path"),
+            "raw_path": scope.get("raw_path", b"").decode(errors="ignore"),
+            "root_path": scope.get("root_path"),
+            "query_string": scope.get("query_string", b"").decode(),
+            "method": scope.get("method"),
+            "headers": headers,
+        }
+        body = json.dumps(data, indent=2).encode()
+        await send({"type": "http.response.start", "status": 200, "headers": [[b"content-type", b"application/json"]]})
+        await send({"type": "http.response.body", "body": body})
+        return
+    await fastapi_app(scope, receive, send)
